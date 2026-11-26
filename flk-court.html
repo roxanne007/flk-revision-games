@@ -147,7 +147,12 @@ details summary{cursor:pointer;font-family:var(--f-display);font-weight:700;font
       <div class="group">
         <p class="label">Mode</p>
         <div class="chips" id="modeChips"></div>
-        <p class="hint">Exam pace gives you 1 min 42 s per question, the same as the real SQE1 (153 minutes for 90 questions). Mock exam works like the real paper: one clock for the whole round, no answers until you submit, and you can flag questions and go back.</p>
+        <p class="hint">Exam pace times each question separately. Mock exam works like the real paper: one clock for the whole round, no answers until you submit, and you can flag questions and go back.</p>
+      </div>
+      <div class="group" id="paceGroup">
+        <p class="label">Time per question</p>
+        <div class="chips" id="paceChips"></div>
+        <p class="hint">1 min 20 s is exam pace. Give yourself extra time while you're learning, then build up to it.</p>
       </div>
       <div class="row"><button class="btn" id="startBtn">Call the first case</button></div>
     </div>
@@ -254,7 +259,7 @@ let record = store.get("flk-record",{});
 const allQs = ()=>BANK.concat(custom.map(c=>({...c,custom:true})));
 
 /* ---------- setup state ---------- */
-const st = {paper:"Both", subj:new Set([...SUBJECTS.FLK1,...SUBJECTS.FLK2]), len:10, mode:"practice"};
+const st = {paper:"Both", subj:new Set([...SUBJECTS.FLK1,...SUBJECTS.FLK2]), len:10, mode:"practice", pace:store.get("flk-pace",80)};
 const $ = id=>document.getElementById(id);
 const esc = s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
@@ -267,6 +272,9 @@ function renderSetup(){
   papersFor().flatMap(x=>SUBJECTS[x]).forEach(s=>sc.append(chip(s, st.subj.has(s), ()=>{st.subj.has(s)?st.subj.delete(s):st.subj.add(s); renderSetup();})));
   const lc=$("lenChips");lc.innerHTML="";
   [[5,"5 quick"],[10,"10"],[20,"20"],[0,"Every question"]].forEach(([n,t])=>lc.append(chip(t, st.len===n, ()=>{st.len=n;renderSetup();})));
+  const pcs=$("paceChips");pcs.innerHTML="";
+  [[80,"1:20 (exam pace)"],[105,"1:45"],[150,"2:30"]].forEach(([v,t])=>pcs.append(chip(t, st.pace===v, ()=>{st.pace=v;store.set("flk-pace",v);renderSetup();})));
+  $("paceGroup").hidden=st.mode==="practice";
   const mc=$("modeChips");mc.innerHTML="";
   [["practice","Practice (no timer)"],["exam","Exam pace"],["mock","Mock exam"]].forEach(([m,t])=>mc.append(chip(t, st.mode===m, ()=>{st.mode=m;renderSetup();})));
   const n=pool().length;
@@ -307,7 +315,7 @@ function start(){
   $("statScore").hidden=$("statStreak").hidden=G.mock;
   $("quitBtn").textContent=G.mock?"Submit paper":"Adjourn (end round)";
   clearInterval(tick);
-  if(G.mock){G.left=102*qs.length;$("timerWrap").hidden=false;drawTime();tick=setInterval(()=>{G.left--;drawTime();if(G.left<=0){clearInterval(tick);finish()}},1000)}
+  if(G.mock){G.left=st.pace*qs.length;$("timerWrap").hidden=false;drawTime();tick=setInterval(()=>{G.left--;drawTime();if(G.left<=0){clearInterval(tick);finish()}},1000)}
   show(); window.scrollTo({top:0});
 }
 function show(){
@@ -322,7 +330,7 @@ function show(){
   if(G.mock){drawNav();return}
   $("prog").style.width=(100*G.i/G.qs.length)+"%";
   clearInterval(tick);
-  if(st.mode==="exam"){G.left=102;$("timerWrap").hidden=false;drawTime();tick=setInterval(()=>{G.left--;drawTime();if(G.left<=0){clearInterval(tick);answer(-1)}},1000)} else $("timerWrap").hidden=true;
+  if(st.mode==="exam"){G.left=st.pace;$("timerWrap").hidden=false;drawTime();tick=setInterval(()=>{G.left--;drawTime();if(G.left<=0){clearInterval(tick);answer(-1)}},1000)} else $("timerWrap").hidden=true;
 }
 function drawTime(){const m=Math.floor(G.left/60),s=G.left%60;$("timer").textContent=`${m}:${String(s).padStart(2,"0")}`;$("timerWrap").classList.toggle("low",G.left<=(G.mock?300:20))}
 function drawNav(){

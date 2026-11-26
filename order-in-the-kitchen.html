@@ -58,7 +58,7 @@ button:focus-visible{outline:3px solid var(--warn);outline-offset:2px}
 .stars{font-size:22px;letter-spacing:2px;color:var(--line)}
 .stars .on{color:var(--warn)}
 /* tickets */
-.rail{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;min-height:148px}
+.rail{display:grid;grid-template-columns:repeat(var(--cols,3),minmax(0,1fr));gap:8px;min-height:148px}
 @media (max-width:520px){.rail{grid-template-columns:1fr;min-height:0;gap:6px}.ticket{padding:7px 10px 9px;gap:3px}.ticket.empty{padding:6px}.ticket .bar{height:5px}.hud .big{font-size:22px}.hud.card{padding:8px 14px!important}}
 .ticket{background:var(--ticket);border:2px dashed var(--ticket-line);border-radius:6px 6px 14px 14px;padding:10px 12px 12px;display:flex;flex-direction:column;gap:6px;position:relative;min-width:0;animation:drop .35s ease}
 .ticket.empty{background:transparent;border-style:dotted;border-color:var(--line);color:var(--muted);align-items:center;justify-content:center;font-size:13px;animation:none}
@@ -94,7 +94,7 @@ svg.trail{position:absolute;inset:12px;width:calc(100% - 24px);height:calc(100% 
 .res h2{font-size:40px;color:var(--hot)}
 .bigstars{font-size:54px;letter-spacing:6px;color:var(--line);line-height:1;margin:10px 0}
 .bigstars .on{color:var(--warn)}
-.rail.mcq{grid-template-columns:repeat(3,minmax(0,1fr));min-height:0}
+.rail.mcq{grid-template-columns:repeat(var(--cols,3),minmax(0,1fr));min-height:0}
 .rail.mcq .ticket{cursor:pointer;padding:8px 10px 10px;gap:4px}
 .rail.mcq .ticket .clue{font-size:13.5px;line-height:1.3}
 .rail.mcq .ticket.cur{border-style:solid;border-color:var(--hot);box-shadow:0 0 0 3px color-mix(in srgb,var(--hot) 25%,transparent)}
@@ -134,6 +134,8 @@ svg.trail{position:absolute;inset:12px;width:calc(100% - 24px);height:calc(100% 
     <div class="how" id="how"></div>
     <div class="paperpick" id="modePick" aria-label="Game mode"></div>
     <div class="paperpick" id="paperPick" aria-label="Paper"></div>
+    <div class="paperpick" id="speedPick" aria-label="Speed"></div>
+    <p class="muted" id="speedLine" style="margin:-6px 0 16px;font-size:14px"></p>
     <div class="row">
       <button class="btn" id="startBtn">Start the shift</button>
       <button class="btn alt small" id="soundBtn" aria-pressed="true">Sound: on</button>
@@ -230,12 +232,20 @@ const WORDS = [
  ["TURNBULL","Turnbull","The direction on disputed identification evidence","FLK2"],
  ["MURDER","Murder","Mens rea: intention to kill or cause GBH","FLK2"],
 ];
-const N=6, MAXORD=3;
+const N=6;
+let MAXORD=2;
+const SPEEDS={
+  relaxed:{label:"Relaxed",max:2,mcq:{life:200,shift:480},grid:{mult:2,shift:300},note:"Two orders at a time with plenty of time to read. About 1 min 40 s per question."},
+  exam:{label:"Exam pace",max:2,mcq:{life:160,shift:480},grid:{mult:1.5,shift:240},note:"Two orders at a time. About 1 min 20 s per question, the same as the exam."},
+  rush:{label:"Rush",max:3,mcq:{life:110,shift:300},grid:{mult:1,shift:180},note:"Three orders at once. Faster than the exam, for when you know it well."}
+};
+const SP=()=>SPEEDS[speed];
 let SHIFT=180;
 const BANK=window.FLK_BANK||[];
 const FILL="EEEEEEEAAAAARRRRIIIIOOOOTTTTNNNNSSSSLLLCCCUUDDDPPMMHHGBBFYWKV";
 const $=id=>document.getElementById(id);
 const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+let speed=store.get("ok-speed","relaxed");if(!SPEEDS[speed])speed="relaxed";
 
 /* ---------- sound ---------- */
 let soundOn=store.get("ok-sound",true), ac=null;
@@ -256,7 +266,10 @@ function renderIntro(){
   [["mcq","Best answer (exam style)"],["grid","Letter grid"]].forEach(([m,t])=>{const b=document.createElement("button");b.className="pp";b.textContent=t;b.setAttribute("aria-pressed",mode===m);b.onclick=()=>{mode=m;store.set("ok-mode",m);renderIntro()};mp.append(b)});
   $("introLine").textContent=HOW[mode][0];
   $("how").innerHTML=HOW[mode][1].map(([a,b])=>`<div><b>${a}</b>${b}</div>`).join("");
-  $("startBtn").textContent=`Start the ${mode==="mcq"?4:3}-minute shift`;
+  $("startBtn").textContent=`Start the ${Math.round(SP()[mode].shift/60)}-minute shift`;
+  const sp=$("speedPick");sp.innerHTML="";
+  Object.entries(SPEEDS).forEach(([k,v])=>{const b=document.createElement("button");b.className="pp";b.textContent=v.label;b.setAttribute("aria-pressed",speed===k);b.onclick=()=>{speed=k;store.set("ok-speed",k);renderIntro()};sp.append(b)});
+  $("speedLine").textContent=mode==="mcq"?SP().note:{relaxed:"Two orders at a time, with double the time on each ticket.",exam:"Two orders at a time, with extra time on each ticket.",rush:"Three orders at once. The original speed."}[speed];
   const pp=$("paperPick");pp.innerHTML="";
   [["FLK1","FLK1"],["FLK2","FLK2"],["Both","Both papers"]].forEach(([p,t])=>{const b=document.createElement("button");b.className="pp";b.textContent=t;b.setAttribute("aria-pressed",paper===p);b.onclick=()=>{paper=p;renderIntro()};pp.append(b)});
   const best=store.get(bestKey(),0);const T=TH[mode];
@@ -294,7 +307,7 @@ function addMcq(){
   const active=new Set(orders.map(o=>o.q));const recent=G.recentQ;
   const cands=shuffle(qPool().filter(q=>!active.has(q)&&!recent.includes(q)));
   const q=cands[0]||shuffle(qPool().filter(q=>!active.has(q)))[0];if(!q)return false;
-  const id=++oid;const life=55+Math.min(35,Math.round(q.stem.length/9));
+  const id=++oid;const life=SP().mcq.life+Math.min(30,Math.round(q.stem.length/15));
   orders.push({id,q,opts:shuffle([q.right,...q.wrong]),life,left:life,cut:false});
   G.recentQ.push(q);if(G.recentQ.length>Math.max(0,qPool().length-4))G.recentQ.shift();
   if(G.cur==null){G.cur=id;drawCounter()}
@@ -310,7 +323,7 @@ function addOrder(){
     const path=placePath(w[0]);if(!path)continue;
     const id=++oid;const fresh=[];
     path.forEach((cell,k)=>{if(grid[cell]!==w[0][k]){grid[cell]=w[0][k];fresh.push(cell)}owners[cell].add(id)});
-    const life=38+w[0].length*3.5;
+    const life=(38+w[0].length*3.5)*SP().grid.mult;
     orders.push({id,w,path,life,left:life,peeked:false});
     G.recent.push(w[0]);
     drawGrid(fresh);sfx.ding();return true;
@@ -330,7 +343,7 @@ function removeOrder(o){
 /* ---------- game loop ---------- */
 const asItem=o=>o.q?{name:o.q.s,paper:o.q.p,clue:o.q.stem,ans:o.q.right,exp:o.q.exp}:{name:o.w[1],paper:o.w[3],clue:o.w[2]};
 function start(){
-  SHIFT=mode==="mcq"?240:180;
+  SHIFT=SP()[mode].shift;MAXORD=SP().max;$("rail").style.setProperty("--cols",MAXORD);
   grid=Array.from({length:N*N},()=>rnd(FILL));owners=Array.from({length:N*N},()=>new Set());orders=[];
   G={t:SHIFT,tips:0,combo:1,lastServe:-99,served:[],burnt:[],sent:[],pending:[],recent:[],recentQ:G?G.recentQ||[]:[],peeks:0,cur:null,fb:false};
   const mc=mode==="mcq";$("hob").hidden=$("pass").hidden=mc;$("counter").hidden=!mc;$("rail").classList.toggle("mcq",mc);$("rail").dataset.ids="";
@@ -405,7 +418,7 @@ function choose(k){
   const ri=o.opts.indexOf(o.q.right);
   if(k===ri){
     const now=SHIFT-G.t;
-    G.combo=now-G.lastServe<30?Math.min(G.combo+1,4):1;G.lastServe=now;
+    G.combo=now-G.lastServe<SP().mcq.life/2?Math.min(G.combo+1,4):1;G.lastServe=now;
     const tip=(20+Math.round(30*o.left/o.life))*G.combo;
     G.tips+=tip;G.served.push(asItem(o));sfx.serve();
     toast(`Served to table ${o.id}! +£${tip}${G.combo>1?` (combo ×${G.combo})`:""}`);
@@ -476,7 +489,7 @@ function serve(){
   const o=orders.find(o=>o.w[0]===w);
   if(!o){const el=$("word");el.classList.remove("shake");void el.offsetWidth;el.classList.add("shake");sfx.bad();toast(wordPool().some(x=>x[0]===w)?"Nobody ordered that one right now":"That's not on any ticket");setTimeout(clearSel,350);return}
   const now=SHIFT-G.t;
-  G.combo=now-G.lastServe<10?Math.min(G.combo+1,4):1;G.lastServe=now;
+  G.combo=now-G.lastServe<10*SP().grid.mult?Math.min(G.combo+1,4):1;G.lastServe=now;
   const speed=Math.round(20*o.left/o.life);
   const tip=(10+w.length*5+speed)*G.combo;
   G.tips+=tip;G.served.push(o.w);sfx.serve();
