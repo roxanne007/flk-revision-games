@@ -26,6 +26,7 @@
   --bg:#0e1424; --paper:#172036; --ink:#e8ecf6; --muted:#9aa6c2; --line:#2a3552;
   --ribbon:#f06292; --ribbon-soft:#3a1d2c; --good:#5fd39a; --good-soft:#163628; --bad:#ff8a80; --bad-soft:#3d1c1c; --chip:#222d48; color-scheme:dark}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.55}
 .wrap{max-width:760px;margin:0 auto;padding-block:20px 60px;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));display:flex;flex-direction:column;gap:20px}
 h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.1}
@@ -68,6 +69,18 @@ h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.1
 .opt.right .k{background:var(--good);color:var(--paper)}
 .opt.wrong{border-color:var(--bad);background:var(--bad-soft)}
 .opt.wrong .k{background:var(--bad);color:var(--paper)}
+.opt.chosen{border-color:var(--ink);background:var(--chip)}
+.opt.chosen .k{background:var(--ink);color:var(--paper)}
+.mockbar{margin-top:20px;padding-top:16px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+.mockbar .btn.ghost{padding:9px 10px;font-size:14px;flex:1 1 0;min-width:0}
+.mockbar .row{flex-wrap:nowrap;gap:8px}
+.navq{display:flex;flex-wrap:wrap;gap:6px}
+.nq{font-family:var(--f-mono);font-size:13px;font-weight:700;width:38px;height:38px;border-radius:8px;border:1.5px solid var(--line);background:var(--paper);color:var(--muted);cursor:pointer;padding:0}
+.nq.done{background:var(--chip);color:var(--ink)}
+.nq.flag{border-color:var(--ribbon);box-shadow:inset 0 -4px 0 var(--ribbon)}
+.nq.cur{outline:2.5px solid var(--ink);outline-offset:1px}
+.nq:focus-visible{outline:3px solid var(--ribbon)}
+.confirm{background:var(--ribbon-soft);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px}
 .verdict{margin-top:18px;border-radius:10px;padding:16px;border:1.5px solid}
 .verdict.good{border-color:var(--good);background:var(--good-soft)}
 .verdict.bad{border-color:var(--bad);background:var(--bad-soft)}
@@ -134,7 +147,7 @@ details summary{cursor:pointer;font-family:var(--f-display);font-weight:700;font
       <div class="group">
         <p class="label">Mode</p>
         <div class="chips" id="modeChips"></div>
-        <p class="hint">Exam pace gives you 1 min 42 s per question, the same as the real SQE1 (153 minutes for 90 questions).</p>
+        <p class="hint">Exam pace gives you 1 min 42 s per question, the same as the real SQE1 (153 minutes for 90 questions). Mock exam works like the real paper: one clock for the whole round, no answers until you submit, and you can flag questions and go back.</p>
       </div>
       <div class="row"><button class="btn" id="startBtn">Call the first case</button></div>
     </div>
@@ -176,8 +189,8 @@ details summary{cursor:pointer;font-family:var(--f-display);font-weight:700;font
       <div class="bench">
         <span>Case <b id="qNum">1</b> of <b id="qTot">10</b></span>
         <div class="stats">
-          <span>Score <b id="score">0</b></span>
-          <span>Streak <b id="streak">0</b></span>
+          <span id="statScore">Score <b id="score">0</b></span>
+          <span id="statStreak">Streak <b id="streak">0</b></span>
           <span class="timer" id="timerWrap" hidden>Time <b id="timer">1:42</b></span>
         </div>
       </div>
@@ -186,6 +199,19 @@ details summary{cursor:pointer;font-family:var(--f-display);font-weight:700;font
       <p class="stem" id="stem"></p>
       <div class="opts" id="opts"></div>
       <div id="verdict" hidden></div>
+      <div class="mockbar" id="mockBar" hidden>
+        <div class="row" style="justify-content:space-between">
+          <button class="btn ghost" id="prevBtn" type="button">← Previous</button>
+          <button class="btn ghost" id="flagBtn" type="button">Flag</button>
+          <button class="btn ghost" id="nextQBtn" type="button">Next →</button>
+        </div>
+        <p class="hint" id="mockStatus" style="margin:0"></p>
+        <div class="navq" id="navq"></div>
+        <div class="confirm" id="confirm" hidden>
+          <p id="confirmText" style="margin:0;font-weight:600"></p>
+          <div class="row"><button class="btn" id="confirmYes" type="button">Submit now</button><button class="btn ghost" id="confirmNo" type="button">Keep going</button></div>
+        </div>
+      </div>
       <div class="next" id="nextWrap" hidden><button class="btn" id="nextBtn">Next case →</button></div>
     </div>
     <div class="row" style="justify-content:center;margin-top:14px"><button class="btn ghost" id="quitBtn">Adjourn (end round)</button></div>
@@ -213,268 +239,10 @@ details summary{cursor:pointer;font-family:var(--f-display);font-weight:700;font
   <p class="foot">Practice questions written for revision. Always check against your course materials, as rates and thresholds change. Good luck, Angelica!</p>
 </div>
 
+<script src="questions.js"></script>
 <script>
-const SUBJECTS = {
-  FLK1: ["Business Law & Practice","Dispute Resolution","Contract","Tort","Legal System","Constitutional & Admin Law","Ethics & Legal Services"],
-  FLK2: ["Property Practice","Land Law","Trusts","Wills & Administration","Solicitors' Accounts","Criminal Law","Criminal Practice"]
-};
-const Q = (p,s,stem,right,wrong,exp)=>({p,s,stem,right,wrong,exp});
-const BANK = [
-// ---------- FLK1: Contract
-Q("FLK1","Contract","A shop puts a jacket in its window with a ticket reading £40. Marta goes in and says she will buy it at that price. The shop refuses to sell. Which statement best describes the legal position?",
- "The display was an invitation to treat, so Marta made an offer which the shop was free to reject.",
- ["The display was an offer, and Marta's words accepted it, forming a binding contract.","The display was a unilateral offer, accepted when Marta entered the shop.","A contract exists because the price ticket makes the terms certain.","The shop must sell because it is a trader dealing with a consumer."],
- "Goods displayed in a shop window are an invitation to treat (Fisher v Bell; Pharmaceutical Society v Boots). The customer makes the offer, which the shop can accept or reject."),
-Q("FLK1","Contract","Sam offers by letter to sell his car to Bo. Bo posts a letter of acceptance, but it is lost and never arrives. Post was a reasonable means of acceptance and Sam did not exclude the postal rule. Is there a contract?",
- "Yes. Acceptance took effect when the letter was posted.",
- ["No. Acceptance is only effective when it is received by the offeror.","No. A lost letter is treated as if it were never sent.","Yes, but only once Sam is told that the letter was posted.","No. An offer made by post must be accepted within 24 hours."],
- "Under the postal rule, acceptance is complete on posting where post is a reasonable means of communication (Adams v Lindsell), even if the letter is lost (Household Fire Insurance v Grant)."),
-Q("FLK1","Contract","Dev owes Cara £8,000, due on 1 June. On 1 June Cara agrees to accept £5,000 'in full and final settlement', and Dev pays it. Nothing else is given. Cara now sues for the remaining £3,000. What is the best advice?",
- "Cara can probably recover the £3,000, because paying a smaller sum on the due date is not good consideration for releasing the balance.",
- ["Cara cannot recover, because the agreement was a binding variation of the contract.","Cara cannot recover, because the practical benefit principle in Williams v Roffey applies.","Cara can only recover if the settlement agreement was oral.","Cara cannot recover, because she accepted the payment by conduct."],
- "The rule in Pinnel's Case, confirmed in Foakes v Beer: part payment of a debt is not consideration for a promise to forgo the rest, unless there is a fresh element (earlier date, different place, something extra). Re Selectmove refused to extend Williams v Roffey to part payment. Promissory estoppel is the main argument Dev could try."),
-Q("FLK1","Contract","Which test decides whether a loss caused by a breach of contract is too remote to recover?",
- "Whether the loss arose naturally from the breach, or was within both parties' reasonable contemplation when the contract was made as a probable result of breach.",
- ["Whether the loss was a direct consequence of the breach, however unforeseeable.","Whether the loss was reasonably foreseeable at the date of breach.","Whether the defendant intended to cause the loss.","Whether the claimant took reasonable steps to reduce the loss."],
- "This is the two-limb test in Hadley v Baxendale. Contemplation is judged when the contract is made, not at breach. Mitigation is a separate limit on damages."),
-// ---------- FLK1: Tort
-Q("FLK1","Tort","Rina watches a live TV broadcast of a stadium crush in which her brother is badly injured. She develops a recognised psychiatric illness and sues the negligent stadium operator. Her claim is most likely to:",
- "Fail, because she did not perceive the event or its immediate aftermath with her own unaided senses.",
- ["Fail, because siblings can never claim as secondary victims.","Succeed, because psychiatric harm to a relative was foreseeable.","Succeed, because watching a live broadcast counts as being present.","Succeed, because she is a primary victim."],
- "Under Alcock v Chief Constable of South Yorkshire, a secondary victim needs a close tie of love and affection, proximity in time and space, and perception with their own unaided senses. Watching on TV fails the last requirement. Siblings can claim, but must prove the close tie, as it is not presumed."),
-Q("FLK1","Tort","A lawful visitor trips on a loose floorboard in a shop and is injured. Which statute mainly governs the shop occupier's liability?",
- "Occupiers' Liability Act 1957",
- ["Occupiers' Liability Act 1984","Consumer Protection Act 1987","Defective Premises Act 1972","Unfair Contract Terms Act 1977"],
- "The 1957 Act covers the common duty of care owed to lawful visitors. The 1984 Act covers people other than visitors, such as trespassers."),
-Q("FLK1","Tort","A petrol station attendant argues with a customer at the counter, then follows him onto the forecourt and attacks him. Is the employer likely to be vicariously liable?",
- "Probably yes, because there is a close enough connection between the attack and the job the employee was given.",
- ["No, because deliberate criminal acts are never within the course of employment.","No, because the attack happened outside the building.","Yes, because employers are strictly liable for anything employees do during working hours.","Only if the employer authorised the use of force."],
- "These are the facts of Mohamud v WM Morrison Supermarkets [2016] UKSC 11. The close connection test from Lister v Hesley Hall was satisfied because the attack was an unbroken sequence from the employee's job of serving customers."),
-Q("FLK1","Tort","A claimant who was not wearing a seatbelt is injured in a crash caused entirely by the defendant's negligent driving. The injuries are worse because of the missing seatbelt. What is the effect?",
- "Damages are reduced to the extent the court thinks just and equitable, given the claimant's share of responsibility for the damage.",
- ["It is a complete defence to the claim.","The claimant is treated as consenting to the risk, so no damages are payable.","There is no effect, because the claimant did not cause the accident.","Damages are always reduced by exactly 50%."],
- "Contributory negligence under the Law Reform (Contributory Negligence) Act 1945, s1. Froom v Butcher suggested guideline reductions of 25% or 15% for failing to wear a seatbelt."),
-// ---------- FLK1: Legal System
-Q("FLK1","Legal System","Which part of a judgment binds lower courts under the doctrine of precedent?",
- "The ratio decidendi",
- ["Obiter dicta","The headnote in the law report","A dissenting judgment","Only the court's final order between the parties"],
- "The ratio decidendi, the legal reasoning needed for the decision, is binding. Obiter dicta and dissents can only be persuasive."),
-Q("FLK1","Legal System","Can the Supreme Court depart from one of its own earlier decisions?",
- "Yes, when it appears right to do so, following the approach of the 1966 Practice Statement.",
- ["No, it is always bound by its own earlier decisions.","Only with the consent of Parliament.","Only where the earlier decision was made per incuriam.","Only where the earlier decision concerned EU law."],
- "The 1966 Practice Statement let the House of Lords depart from its own decisions, and the Supreme Court has confirmed the same approach (Austin v Southwark LBC). It is used sparingly."),
-Q("FLK1","Legal System","In which situation can the Court of Appeal (Civil Division) depart from one of its own earlier decisions?",
- "Where the earlier decision was made per incuriam.",
- ["Where the court now believes the earlier decision was simply wrong.","Where the earlier decision is more than 20 years old.","Where a High Court judge has criticised the earlier decision.","Where both parties agree that it should."],
- "Young v Bristol Aeroplane sets out the exceptions: conflicting earlier Court of Appeal decisions, an earlier decision inconsistent with a later House of Lords or Supreme Court decision, and decisions made per incuriam."),
-Q("FLK1","Legal System","Following Pepper v Hart, when may a court refer to Hansard to interpret a statute?",
- "Where the legislation is ambiguous or obscure, and Hansard contains a clear statement by a minister or promoter of the Bill.",
- ["Whenever either party asks the court to.","Only when interpreting statutes passed before 1950.","Whenever the literal meaning gives a result the judge dislikes.","Never, because parliamentary privilege prevents it."],
- "Pepper v Hart [1993] set three conditions: ambiguity, obscurity or absurdity; statements by a minister or other promoter; and those statements being clear."),
-// ---------- FLK1: Constitutional & Admin
-Q("FLK1","Constitutional & Admin Law","The High Court finds that a section of an Act of Parliament cannot be read compatibly with a Convention right, even using s3 of the Human Rights Act 1998. What can it do?",
- "Make a declaration of incompatibility. The Act stays valid and in force.",
- ["Strike down the incompatible section.","Disapply the section in the case before it.","Refer the question to the European Court of Human Rights for a binding ruling.","Order Parliament to amend the Act within six months."],
- "Under s4 HRA a court can only declare incompatibility, which does not affect the Act's validity (s4(6)). This preserves parliamentary sovereignty. Ministers may then use a remedial order under s10."),
-Q("FLK1","Constitutional & Admin Law","What is the general time limit for filing a claim form for judicial review?",
- "Promptly, and in any event no later than 3 months after the grounds first arose.",
- ["Within 6 weeks of the decision in all cases.","Within 6 months of the decision.","Within 1 year of the decision.","Within 14 days of the decision."],
- "CPR 54.5(1). Shorter limits apply in some areas, such as 6 weeks for planning decisions and 30 days for public procurement."),
-Q("FLK1","Constitutional & Admin Law","After CCSU v Minister for the Civil Service (the GCHQ case), the exercise of prerogative powers is:",
- "Reviewable in principle, depending on whether its subject matter is suitable for the courts to decide (justiciable).",
- ["Never reviewable by the courts.","Reviewable only where a statute expressly allows it.","Fully reviewable whatever the subject matter, including treaty making.","Reviewable only by Parliament, not the courts."],
- "The House of Lords held that the source of a power (statute or prerogative) does not decide reviewability. Some subject matter, like defence and treaties, may be non-justiciable. See also R (Miller) v The Prime Minister [2019]."),
-Q("FLK1","Constitutional & Admin Law","Since 1 January 2024, retained EU law that remains on the UK statute book is called:",
- "Assimilated law",
- ["Direct EU law","Saved Union law","Withdrawn law","Retained EU law (unchanged)"],
- "The Retained EU Law (Revocation and Reform) Act 2023 renamed it assimilated law and ended the principle of supremacy of EU law for it."),
-// ---------- FLK1: BLP
-Q("FLK1","Business Law & Practice","What majority is needed to pass a special resolution at a general meeting of a private company?",
- "Not less than 75% of the votes cast.",
- ["More than 50% of the votes cast.","Two-thirds of the votes cast.","90% of all members.","A unanimous vote."],
- "Companies Act 2006 s283. An ordinary resolution needs a simple majority (more than 50%) under s282. For written resolutions, the percentage is of the total eligible votes, not votes cast."),
-Q("FLK1","Business Law & Practice","Shareholders want to remove a director before the end of their term under s168 Companies Act 2006. What is needed?",
- "An ordinary resolution passed at a general meeting, with special notice of 28 days given to the company.",
- ["A special resolution passed at a general meeting.","A written resolution signed by a majority of members.","A resolution of the board of directors.","A court order."],
- "s168 requires an ordinary resolution with special notice (s312). It cannot be done by written resolution (s288(2)), because the director has the right to speak at the meeting."),
-Q("FLK1","Business Law & Practice","Three partners have no partnership agreement. They put in different amounts of capital. How are profits shared under the Partnership Act 1890?",
- "Equally",
- ["In proportion to the capital each put in.","In proportion to the hours each worked.","However HMRC allocates them in the tax return.","At the court's discretion."],
- "s24(1) Partnership Act 1890: absent agreement, partners share capital and profits equally and contribute equally to losses."),
-Q("FLK1","Business Law & Practice","A director learns of a business opportunity through her role and takes it for herself without authorisation from the board. Which general duty has she most likely breached?",
- "The duty to avoid conflicts of interest (s175)",
- ["The duty to promote the success of the company (s172)","The duty to exercise reasonable care, skill and diligence (s174)","The duty to exercise independent judgment (s173)","The duty to act within powers (s171)"],
- "s175 covers exploiting property, information or opportunity, and applies even if the company could not have used the opportunity itself. Independent directors can authorise it under s175(5)."),
-Q("FLK1","Business Law & Practice","What is the main rate of corporation tax for a company with taxable profits over £250,000?",
- "25%",
- ["19%","20%","28%","30%"],
- "Since 1 April 2023 the main rate is 25%. The small profits rate of 19% applies to profits up to £50,000, with marginal relief in between."),
-// ---------- FLK1: DR
-Q("FLK1","Dispute Resolution","What is the limitation period for a claim for breach of a simple contract (not a deed)?",
- "6 years from the date of the breach.",
- ["3 years from the date of the breach.","6 years from the date of knowledge.","12 years from the date of the breach.","6 years from the date the contract was made."],
- "Limitation Act 1980 s5. Contracts made by deed have 12 years (s8). Personal injury claims are usually 3 years (s11)."),
-Q("FLK1","Dispute Resolution","A breach of contract claim is worth £60,000. The trial is expected to last two days, with one expert per side. Which track will it normally be allocated to?",
- "The intermediate track",
- ["The small claims track","The fast track","The multi-track","The Commercial Court list"],
- "Since October 2023 the intermediate track covers most claims worth £25,000 to £100,000 with a trial of no more than 3 days and no more than 2 experts per party giving oral evidence."),
-Q("FLK1","Dispute Resolution","The particulars of claim are served with the claim form. The defendant files an acknowledgment of service in time. When must the defence be filed?",
- "28 days after service of the particulars of claim.",
- ["14 days after service of the particulars of claim.","14 days after filing the acknowledgment of service.","28 days after the claim form was issued.","21 days after service of the claim form."],
- "CPR 15.4: 14 days after service of the particulars, or 28 days if an acknowledgment of service is filed. The parties can agree an extension of up to 28 more days (CPR 15.5)."),
-Q("FLK1","Dispute Resolution","For service of a claim form within the jurisdiction, by when must the claimant take the step required to serve it?",
- "Before 12 midnight on the calendar day four months after the date of issue.",
- ["Within 14 days of issue.","Within 28 days of issue.","Within 6 months of issue.","Within four months of the date the defendant receives it."],
- "CPR 7.5(1). The claimant must complete the required step, such as posting it or leaving it at the address, within the four months."),
-Q("FLK1","Dispute Resolution","A claimant makes a Part 36 offer to accept £50,000. The defendant rejects it. At trial the claimant is awarded £60,000. What is the claimant most likely to receive?",
- "Enhanced interest, costs on the indemnity basis with interest, and an additional amount of 10% of the damages.",
- ["Only standard costs, as with any successful claimant.","The difference between the offer and the award, doubled.","Nothing extra, because Part 36 only protects defendants.","Costs on the standard basis, but no interest on damages."],
- "CPR 36.17(4): interest up to 10% above base rate, indemnity costs, interest on costs, and an additional amount (10% of damages up to £500,000), unless that would be unjust."),
-// ---------- FLK1: Ethics & Legal Services
-Q("FLK1","Ethics & Legal Services","Which of these is NOT a reserved legal activity under the Legal Services Act 2007?",
- "Will writing",
- ["The conduct of litigation","Probate activities","Reserved instrument activities","The administration of oaths"],
- "The six reserved activities are: rights of audience, conduct of litigation, reserved instrument activities, probate activities, notarial activities and administration of oaths. Will writing is not reserved."),
-Q("FLK1","Ethics & Legal Services","A solicitor is asked to act for both the buyer and the seller in an ordinary house sale, where there is a conflict of interest. Can she act for both?",
- "No, because there is a conflict, and neither the 'substantially common interest' nor the 'competing for the same objective' exception applies.",
- ["Yes, if both clients give informed written consent.","Yes, if different fee earners in the firm handle each side.","Yes, if the property is worth less than £250,000.","Yes, if both are existing clients of the firm."],
- "SRA Code of Conduct for Solicitors, para 6.2. Even where an exception applies, the clients must give informed consent, safeguards must be in place, and acting must be reasonable."),
-Q("FLK1","Ethics & Legal Services","A solicitor gives an undertaking to redeem a mortgage on completion. Under the SRA Code, she must:",
- "Perform it within the agreed timescale, or within a reasonable time if none was agreed.",
- ["Perform it only if her client gives the money in time.","Perform it within 14 days, whatever was agreed.","Treat it as binding only if it was given in writing.","Perform it only if it was given by a partner of the firm."],
- "SRA Code para 1.3. Undertakings can be oral or written, and the solicitor is personally bound by them."),
-Q("FLK1","Ethics & Legal Services","Which of these is one of the seven SRA Principles?",
- "Act with independence.",
- ["Act in the best interests of your firm.","Get the highest possible financial recovery for your client.","Always follow your client's instructions.","Complete all matters as quickly as possible."],
- "The Principles cover: the rule of law and proper administration of justice, public trust and confidence, independence, honesty, integrity, equality, diversity and inclusion, and the best interests of each client."),
-// ---------- FLK2: Property Practice
-Q("FLK2","Property Practice","When must a buyer's SDLT return be filed and the tax paid for a standard residential purchase in England?",
- "Within 14 days after the effective date of the transaction (normally completion).",
- ["Within 30 days after completion.","Within 30 working days after completion.","Within 3 months after completion.","On exchange of contracts."],
- "The deadline was cut from 30 days to 14 days from 1 March 2019."),
-Q("FLK2","Property Practice","How long is the priority period given by an official search of the whole title with priority (form OS1) at HM Land Registry?",
- "30 working days",
- ["30 calendar days","14 days","6 weeks","2 months"],
- "The buyer's application to register must reach HMLR within the 30 working days to take priority over any later entries."),
-Q("FLK2","Property Practice","A new lease of registered land must be registered at HM Land Registry with its own title if its term is:",
- "More than 7 years",
- ["More than 3 years","More than 21 years","More than 99 years","Any length"],
- "Land Registration Act 2002 s27. Legal leases of 7 years or less usually override as unregistered interests (Sch 3 para 1)."),
-Q("FLK2","Property Practice","A landlord and tenant want to exclude security of tenure under the Landlord and Tenant Act 1954 for a 5-year business lease. What is needed?",
- "The landlord serves a warning notice on the tenant, and the tenant makes a simple or statutory declaration, before the tenant is committed to the lease.",
- ["A court order approving the exclusion.","Just a clause in the lease excluding the Act.","Registering the exclusion at HM Land Registry.","Nothing, because the Act does not apply to leases over 2 years."],
- "s38A of the 1954 Act. A simple declaration is enough if the notice is served at least 14 days before the tenant commits. Otherwise a statutory declaration is needed. The lease must refer to the notice and declaration."),
-// ---------- FLK2: Land Law
-Q("FLK2","Land Law","Which estates in land can exist as legal estates under s1(1) Law of Property Act 1925?",
- "The fee simple absolute in possession, and the term of years absolute.",
- ["The fee simple, the life interest and the term of years.","Only the fee simple absolute in possession.","The fee simple, the fee tail and the term of years.","Any estate created by deed."],
- "Only these two can be legal estates. Other interests, such as life interests, take effect in equity behind a trust."),
-Q("FLK2","Land Law","Which of these is NOT one of the requirements for an easement set out in Re Ellenborough Park?",
- "The right must have been used continuously for 20 years.",
- ["There must be a dominant and a servient tenement.","The right must accommodate the dominant tenement.","The dominant and servient owners must be different people.","The right must be capable of forming the subject matter of a grant."],
- "Twenty years of use is relevant to acquiring an easement by prescription, not to whether a right can be an easement at all."),
-Q("FLK2","Land Law","Bea paid towards buying a registered house held in her partner's sole name, and she lives there. Her partner sells the house to a buyer without telling her. Bea's beneficial interest is most likely to:",
- "Override the sale, if she was in actual occupation and this was obvious on a reasonably careful inspection or the buyer knew of it.",
- ["Be overreached, because the buyer paid the purchase price.","Be lost, because it was not protected by a notice on the register.","Bind the buyer only if it was set out in a written declaration of trust.","Be converted into a right to damages against the buyer."],
- "LRA 2002 Sch 3 para 2. Overreaching needs payment to at least two trustees (LPA 1925 ss2 and 27), so it does not apply here (compare City of London BS v Flegg)."),
-Q("FLK2","Land Law","A freehold owner covenants to maintain a boundary fence. She later sells the land. Is the new owner bound by the covenant?",
- "No. The burden of a positive covenant does not pass to successors of freehold land, at law or in equity.",
- ["Yes, all covenants run with the land automatically.","Yes, if the covenant was registered as a notice.","Yes, under the rule in Tulk v Moxhay.","Only if the new owner paid less than market value."],
- "Rhone v Stephens [1994]. Tulk v Moxhay lets the burden of restrictive (negative) covenants run in equity. Workarounds for positive covenants include a chain of indemnity covenants and the rule in Halsall v Brizell."),
-Q("FLK2","Land Law","Two people hold a house as beneficial joint tenants. One serves a written notice on the other saying she wants to sever. What is the effect?",
- "The beneficial joint tenancy is severed, so they hold as tenants in common in equal shares. The legal title stays a joint tenancy.",
- ["The legal title is severed, so they become tenants in common at law.","Nothing, because severance requires both to agree.","Severance only takes effect once the notice is registered at HMLR.","The person who served the notice loses her share."],
- "s36(2) LPA 1925 allows severance by written notice. The legal estate can only be held as a joint tenancy (s1(6) LPA 1925)."),
-// ---------- FLK2: Trusts
-Q("FLK2","Trusts","What are the three certainties needed to create an express private trust?",
- "Certainty of intention, subject matter and objects.",
- ["Certainty of intention, consideration and objects.","Certainty of trustees, beneficiaries and duration.","Certainty of writing, signature and witnesses.","Certainty of subject matter, value and objects."],
- "Knight v Knight (1840). If any of the three is missing, the trust fails."),
-Q("FLK2","Trusts","Under s53(1)(c) Law of Property Act 1925, the disposition of an existing equitable interest must be:",
- "In writing, signed by the person disposing of it or their authorised agent.",
- ["Made by deed.","Evidenced in writing, but the writing can come later.","Registered at HM Land Registry.","Made orally in front of two witnesses."],
- "Without writing, the disposition is void. Compare s53(1)(b), where a declaration of a trust of land only needs to be evidenced in writing."),
-Q("FLK2","Trusts","Which test decides whether the objects of a discretionary trust are certain enough?",
- "Whether it can be said of any given person that they are or are not a member of the class.",
- ["Whether a complete list of every beneficiary can be drawn up.","Whether at least one person clearly falls within the class.","Whether the trustees think the class is reasonable.","Whether the class is charitable."],
- "McPhail v Doulton [1971] (the 'is or is not' test). Fixed trusts still need a complete list (IRC v Broadway Cottages Trust)."),
-Q("FLK2","Trusts","Before investing trust money under the Trustee Act 2000, trustees must generally:",
- "Get and consider proper advice, and have regard to the standard investment criteria.",
- ["Get the written consent of every adult beneficiary.","Invest only in government bonds.","Get a court order approving the investments.","Invest everything in one fund to keep costs down."],
- "s4 (standard investment criteria: suitability and diversification) and s5 (advice, unless the trustee reasonably concludes it is unnecessary). The statutory duty of care in s1 also applies."),
-// ---------- FLK2: Wills
-Q("FLK2","Wills & Administration","Tom's will leaves £10,000 to his niece. His niece was one of the two witnesses to the will. What is the effect?",
- "The will is valid, but the gift to the niece fails.",
- ["The whole will is invalid.","The will is valid and the niece still takes the gift.","The gift is valid only if a third person also witnessed the will.","The niece receives half the gift."],
- "Wills Act 1837 s15. A gift to a witness, or to a witness's spouse or civil partner, fails. A third, independent witness would save the gift (Wills Act 1968)."),
-Q("FLK2","Wills & Administration","Pia makes a will in 2020. She marries in 2024. Her will does not mention the marriage. What is the effect of the marriage on her will?",
- "The will is revoked.",
- ["No effect at all.","Only gifts to people other than her spouse are revoked.","The will is revoked only if her spouse applies to court.","Her spouse takes everything under the will."],
- "Wills Act 1837 s18. The exception is a will made in expectation of marriage to a particular person (s18(3))."),
-Q("FLK2","Wills & Administration","Someone dies intestate after 26 July 2023, leaving a spouse and two adult children. What does the spouse receive?",
- "The personal chattels, a statutory legacy of £322,000, and half the remaining estate absolutely.",
- ["The whole estate.","A statutory legacy of £270,000 and a life interest in half the rest.","Half the estate, with the children sharing the other half.","The personal chattels only."],
- "Administration of Estates Act 1925 s46 as amended. The children share the other half of the residue on the statutory trusts."),
-Q("FLK2","Wills & Administration","What is the standard inheritance tax nil rate band for an individual?",
- "£325,000",
- ["£175,000","£250,000","£500,000","£1,000,000"],
- "The nil rate band has been £325,000 since 2009 and is frozen until at least April 2030. The residence nil rate band is a separate £175,000. The standard rate on death is 40%."),
-Q("FLK2","Wills & Administration","What is the normal time limit for a claim under the Inheritance (Provision for Family and Dependants) Act 1975?",
- "6 months from the date of the grant of representation.",
- ["6 months from the date of death.","12 months from the date of death.","3 months from the date of the grant.","6 years from the date of death."],
- "s4 of the 1975 Act. The court can allow a claim later, and a claim can be made before a grant is taken out."),
-// ---------- FLK2: Accounts
-Q("FLK2","Solicitors' Accounts","Under the SRA Accounts Rules, how often must a firm reconcile its client accounts?",
- "At least every five weeks.",
- ["At least once a month.","At least every three months.","Once a year, before the accountant's report.","Only when a client asks."],
- "Rule 8.3. A manager or COFA must sign off each reconciliation, and any differences must be investigated promptly."),
-Q("FLK2","Solicitors' Accounts","When can a firm take money from client account to pay its own fees?",
- "Only after it has given the client a bill or other written notification of the costs incurred.",
- ["Whenever the work has been done.","As soon as the client gives money on account of costs.","At the end of each month, whether or not a bill has been sent.","Only after the matter has completed."],
- "Rule 4.3. Once a bill is given, money held for those costs becomes office money and should be transferred promptly."),
-Q("FLK2","Solicitors' Accounts","A firm receives one payment that includes both client money and office money. Under the SRA Accounts Rules 2019, the firm:",
- "May pay it into client account, but must transfer the office money out within 14 days of receipt.",
- ["Must split the cheque before banking it.","Must pay it all into office account.","Must return it and ask for two separate payments.","May leave the office money in client account until the matter ends."],
- "Rule 4.2 allows a mixed payment into client account, and requires the office money to be moved out within 14 days."),
-Q("FLK2","Solicitors' Accounts","A firm finds that client money was wrongly taken from client account. What must it do?",
- "Correct the breach promptly on discovery, including replacing any money missing from client account.",
- ["Report it to the client at the end of the matter.","Correct it only if the client complains.","Wait for the accountant's report before acting.","Ask the client to make up the shortfall."],
- "Rule 6.1. The firm must replace the money from its own resources, and serious breaches must be reported to the SRA."),
-// ---------- FLK2: Criminal Law
-Q("FLK2","Criminal Law","What is the test for dishonesty in theft after Ivey v Genting Casinos and R v Barton and Booth?",
- "The court finds what D actually knew or believed about the facts, then asks whether the conduct was dishonest by the standards of ordinary decent people.",
- ["The conduct must be dishonest by ordinary standards, and D must have realised that ordinary people would see it as dishonest.","Whether D personally believed they were acting honestly.","Whether D gained financially from the conduct.","Whether D intended to permanently deprive the owner."],
- "The second limb of R v Ghosh was rejected in Ivey, and Barton and Booth confirmed this in criminal law. s2 Theft Act 1968 still sets out some situations that are not dishonest."),
-Q("FLK2","Criminal Law","What is the mens rea of murder?",
- "An intention to kill or to cause grievous bodily harm.",
- ["An intention to kill only.","Recklessness as to whether death is caused.","Gross negligence causing death.","Foresight that some harm might be caused."],
- "R v Vickers established intention to cause GBH is enough. Oblique intention needs death or serious harm to be a virtual certainty, which D appreciated (R v Woollin)."),
-Q("FLK2","Criminal Law","D enters a building as a trespasser. Which intention at the time of entry would NOT make this burglary under s9(1)(a) Theft Act 1968?",
- "An intention to commit common assault.",
- ["An intention to steal.","An intention to inflict grievous bodily harm.","An intention to do unlawful damage to the building or anything in it.","An intention to steal anything worth taking that D finds."],
- "s9(2) lists stealing, inflicting GBH and unlawful damage. Rape was removed by the Sexual Offences Act 2003. A conditional intent to steal is enough (A-G's References Nos 1 and 2 of 1979)."),
-Q("FLK2","Criminal Law","The partial defence of loss of control under the Coroners and Justice Act 2009 is available to:",
- "Murder only, reducing it to voluntary manslaughter.",
- ["Any offence against the person.","Murder and attempted murder.","Murder and s18 wounding with intent.","Any offence, as a complete defence."],
- "s54. Diminished responsibility (s2 Homicide Act 1957) is the other partial defence that applies only to murder."),
-// ---------- FLK2: Criminal Practice
-Q("FLK2","Criminal Practice","A suspect is arrested for an indictable offence. How long can the police normally detain him without charge before seeking a warrant from the magistrates?",
- "24 hours from the relevant time, extendable to 36 hours by an officer of superintendent rank or above.",
- ["12 hours, extendable to 24 hours by an inspector.","48 hours, with no extension.","36 hours from arrest, extendable to 72 hours by a superintendent.","Up to 96 hours without any authority."],
- "PACE 1984 ss41 and 42. Magistrates can issue warrants of further detention up to a total of 96 hours (ss43 and 44)."),
-Q("FLK2","Criminal Practice","When can the court draw an adverse inference under s34 Criminal Justice and Public Order Act 1994?",
- "When D fails to mention, under caution or on charge, a fact later relied on in their defence that they could reasonably have been expected to mention.",
- ["Whenever D gives a 'no comment' interview.","Whenever D does not give evidence at trial.","Only if D had no solicitor at the police station.","Whenever D refuses to give fingerprints."],
- "Inferences cannot be drawn if D was not allowed access to legal advice before the interview (s34(2A)). s35 deals separately with failure to give evidence at trial."),
-Q("FLK2","Criminal Practice","D is convicted in the magistrates' court and wants to appeal against conviction to the Crown Court. When must the notice of appeal be served?",
- "Within 15 business days of sentence.",
- ["Within 28 days of conviction.","Within 14 days of conviction.","Within 21 days of sentence.","Within 6 months of conviction."],
- "Criminal Procedure Rules, Part 34. The time runs from sentence, even if conviction was earlier. The Crown Court can extend the time limit."),
-Q("FLK2","Criminal Practice","The prosecution case depends wholly or substantially on disputed identification evidence. What must the judge do?",
- "Give the jury a Turnbull direction warning of the special need for caution.",
- ["Exclude the identification evidence automatically.","Direct the jury to acquit.","Order a new identification procedure in court.","Nothing special, as identification is a matter for the jury."],
- "R v Turnbull [1977]. If the identification is poor quality and unsupported, the judge should withdraw the case from the jury."),
-];
+const SUBJECTS = window.FLK_SUBJECTS;
+const BANK = window.FLK_BANK;
 
 /* ---------- storage (per-viewer, optional) ---------- */
 const store = {
@@ -500,7 +268,7 @@ function renderSetup(){
   const lc=$("lenChips");lc.innerHTML="";
   [[5,"5 quick"],[10,"10"],[20,"20"],[0,"Every question"]].forEach(([n,t])=>lc.append(chip(t, st.len===n, ()=>{st.len=n;renderSetup();})));
   const mc=$("modeChips");mc.innerHTML="";
-  [["practice","Practice (no timer)"],["exam","Exam pace"]].forEach(([m,t])=>mc.append(chip(t, st.mode===m, ()=>{st.mode=m;renderSetup();})));
+  [["practice","Practice (no timer)"],["exam","Exam pace"],["mock","Mock exam"]].forEach(([m,t])=>mc.append(chip(t, st.mode===m, ()=>{st.mode=m;renderSetup();})));
   const n=pool().length;
   $("poolHint").textContent = n ? `${n} question${n===1?"":"s"} in the pool.` : "Pick at least one subject.";
   $("startBtn").disabled = !n;
@@ -530,27 +298,52 @@ const pick=a=>a[Math.floor(Math.random()*a.length)];
 
 function start(){
   let qs=shuffle(pool()); if(st.len) qs=qs.slice(0,st.len);
-  G={qs,i:0,score:0,streak:0,best:0,answers:[]};
+  G={qs,i:0,score:0,streak:0,best:0,answers:[],mock:st.mode==="mock",
+     optsList:qs.map(q=>shuffle([q.right,...q.wrong.filter(Boolean)])),picks:qs.map(()=>-1),flags:new Set()};
   $("setup").hidden=$("recordBox").hidden=$("results").hidden=true;
   $("editor").closest(".brief").hidden=true;
   $("game").hidden=false; $("qTot").textContent=qs.length;
+  $("mockBar").hidden=!G.mock; $("confirm").hidden=true;
+  $("statScore").hidden=$("statStreak").hidden=G.mock;
+  $("quitBtn").textContent=G.mock?"Submit paper":"Adjourn (end round)";
+  clearInterval(tick);
+  if(G.mock){G.left=102*qs.length;$("timerWrap").hidden=false;drawTime();tick=setInterval(()=>{G.left--;drawTime();if(G.left<=0){clearInterval(tick);finish()}},1000)}
   show(); window.scrollTo({top:0});
 }
 function show(){
   const q=G.qs[G.i];
-  G.opts=shuffle([q.right,...q.wrong.filter(Boolean)]);
+  G.opts=G.optsList[G.i];
   $("qNum").textContent=G.i+1; $("score").textContent=G.score; $("streak").textContent=G.streak;
-  $("prog").style.width=(100*G.i/G.qs.length)+"%";
   $("qTag").textContent=`${q.p} · ${q.s}${q.custom?" · yours":""}`;
   $("stem").textContent=q.stem;
   const o=$("opts");o.innerHTML="";
-  G.opts.forEach((t,k)=>{const b=document.createElement("button");b.className="opt";b.innerHTML=`<span class="k">${"ABCDE"[k]}</span><span>${esc(t)}</span>`;b.onclick=()=>answer(k);o.append(b)});
+  G.opts.forEach((t,k)=>{const b=document.createElement("button");b.className="opt"+(G.mock&&G.picks[G.i]===k?" chosen":"");b.innerHTML=`<span class="k">${"ABCDE"[k]}</span><span>${esc(t)}</span>`;b.onclick=()=>answer(k);o.append(b)});
   $("verdict").hidden=true;$("nextWrap").hidden=true;G.locked=false;
+  if(G.mock){drawNav();return}
+  $("prog").style.width=(100*G.i/G.qs.length)+"%";
   clearInterval(tick);
   if(st.mode==="exam"){G.left=102;$("timerWrap").hidden=false;drawTime();tick=setInterval(()=>{G.left--;drawTime();if(G.left<=0){clearInterval(tick);answer(-1)}},1000)} else $("timerWrap").hidden=true;
 }
-function drawTime(){const m=Math.floor(G.left/60),s=G.left%60;$("timer").textContent=`${m}:${String(s).padStart(2,"0")}`;$("timerWrap").classList.toggle("low",G.left<=20)}
+function drawTime(){const m=Math.floor(G.left/60),s=G.left%60;$("timer").textContent=`${m}:${String(s).padStart(2,"0")}`;$("timerWrap").classList.toggle("low",G.left<=(G.mock?300:20))}
+function drawNav(){
+  const nav=$("navq");nav.innerHTML="";
+  G.qs.forEach((_,i)=>{const b=document.createElement("button");b.type="button";
+    b.className="nq"+(G.picks[i]>=0?" done":"")+(G.flags.has(i)?" flag":"")+(i===G.i?" cur":"");
+    b.textContent=i+1;b.setAttribute("aria-label",`Question ${i+1}${G.picks[i]>=0?", answered":""}${G.flags.has(i)?", flagged":""}`);
+    b.onclick=()=>{G.i=i;show()};nav.append(b)});
+  $("flagBtn").textContent=G.flags.has(G.i)?"Unflag":"Flag";
+  $("prevBtn").disabled=G.i===0;$("nextQBtn").disabled=G.i===G.qs.length-1;
+  const done=G.picks.filter(p=>p>=0).length;
+  $("mockStatus").textContent=`${done} answered · ${G.qs.length-done} unanswered · ${G.flags.size} flagged`;
+  $("prog").style.width=(100*done/G.qs.length)+"%";
+}
+function askSubmit(){
+  const left=G.picks.filter(p=>p<0).length;
+  $("confirmText").textContent=left?`You have ${left} unanswered question${left===1?"":"s"}${G.flags.size?` and ${G.flags.size} flagged`:""}. Submit anyway?`:G.flags.size?`Every question is answered, but ${G.flags.size} ${G.flags.size===1?"is":"are"} still flagged. Submit now?`:"Every question is answered. Submit your paper?";
+  $("confirm").hidden=false;$("confirmYes").focus({preventScroll:true});
+}
 function answer(k){
+  if(G.mock){if(k<0)return;G.picks[G.i]=k;[...$("opts").children].forEach((b,j)=>b.classList.toggle("chosen",j===k));drawNav();return}
   if(G.locked)return;G.locked=true;clearInterval(tick);
   const q=G.qs[G.i];const ri=G.opts.indexOf(q.right);const ok=k===ri;
   [...$("opts").children].forEach((b,j)=>{b.disabled=true;if(j===ri)b.classList.add("right");else if(j===k)b.classList.add("wrong")});
@@ -568,11 +361,18 @@ function answer(k){
 function next(){G.i++;if(G.i<G.qs.length)show();else finish()}
 function finish(){
   clearInterval(tick);
+  if(G.mock){
+    G.answers=[];G.score=0;
+    G.qs.forEach((q,i)=>{const k=G.picks[i];const ok=k>=0&&G.optsList[i][k]===q.right;if(ok)G.score++;
+      record[q.s]=record[q.s]||{c:0,t:0};record[q.s].t++;if(ok)record[q.s].c++;
+      G.answers.push({q,ok,yours:k>=0?G.optsList[i][k]:"(not answered)"})});
+    store.set("flk-record",record);
+  }
   const n=G.answers.length;const p=n?Math.round(100*G.score/n):0;
   $("game").hidden=true;$("results").hidden=false;
   $("finalPct").textContent=p+"%";
   $("finalLine").textContent=p>=85?"Judgment for the claimant, with costs. Superb, Angelica!":p>=65?"Case proven. You're on track!":p>=45?"A respectable hearing. A little more revision to go.":"Adjourned for more revision. You've got this.";
-  $("finalSub").textContent=`${G.score} of ${n} correct · best streak ${G.best}`;
+  $("finalSub").textContent=G.mock?`${G.score} of ${n} correct · mock exam${G.left<=0?" (time ran out)":""}`:`${G.score} of ${n} correct · best streak ${G.best}`;
   const by={};G.answers.forEach(a=>{by[a.q.s]=by[a.q.s]||{c:0,t:0};by[a.q.s].t++;if(a.ok)by[a.q.s].c++});
   const rr=$("roundRecord");rr.innerHTML="";Object.keys(by).forEach(s=>rr.append(recRow(s,by[s].c,by[s].t)));
   const wrong=G.answers.filter(a=>!a.ok);const rv=$("review");rv.innerHTML="";
@@ -600,7 +400,10 @@ $("qForm").addEventListener("submit",e=>{
 });
 
 /* ---------- wiring ---------- */
-$("startBtn").onclick=start;$("nextBtn").onclick=next;$("quitBtn").onclick=()=>G.answers.length?finish():menu();
+$("startBtn").onclick=start;$("nextBtn").onclick=next;$("quitBtn").onclick=()=>G.mock?askSubmit():G.answers.length?finish():menu();
+$("prevBtn").onclick=()=>{if(G.i>0){G.i--;show()}};$("nextQBtn").onclick=()=>{if(G.i<G.qs.length-1){G.i++;show()}};
+$("flagBtn").onclick=()=>{G.flags.has(G.i)?G.flags.delete(G.i):G.flags.add(G.i);drawNav()};
+$("confirmYes").onclick=finish;$("confirmNo").onclick=()=>{$("confirm").hidden=true};
 $("againBtn").onclick=start;$("menuBtn").onclick=menu;
 document.addEventListener("keydown",e=>{
   if($("game").hidden||e.target.closest("input,textarea,select"))return;
